@@ -6,3 +6,5 @@ mediapipe
 pymongo
 python-dotenv
 numpy
+gunicorn
+eventlet
