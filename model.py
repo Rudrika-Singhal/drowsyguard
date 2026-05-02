@@ -94,9 +94,18 @@ def analyze_frame(frame, calibrated_ear=None):
     ear = (eye_aspect_ratio(left_eye) + eye_aspect_ratio(right_eye)) / 2
 
     if calibrated_ear is None:
-        calibrated_ear = ear / 0.65
+        # Smart auto-calibration:
+        # Agar EAR > 0.25 → normal eyes → standard threshold use karo
+        # Agar EAR < 0.25 → naturally small eyes → unki apni EAR use karo
+        # Yeh Chinese/Assamese/small eye people ke liye fair hai
+        if ear >= 0.25:
+            calibrated_ear = 0.28   # normal eyes
+        else:
+            calibrated_ear = ear    # naturally small eyes — unki own EAR baseline
 
-    EAR_THRESHOLD = calibrated_ear * 0.65
+    # Threshold = 70% of their OWN open-eye EAR
+    # Isse koi bhi unfairly alert nahi hoga
+    EAR_THRESHOLD = calibrated_ear * 0.70
 
     nose_pt = (int(landmarks[NOSE].x * w), int(landmarks[NOSE].y * h))
     chin_pt = (int(landmarks[CHIN].x * w), int(landmarks[CHIN].y * h))

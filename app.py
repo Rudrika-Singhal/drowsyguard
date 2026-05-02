@@ -1,5 +1,6 @@
 from gevent import monkey
 monkey.patch_all()
+
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -21,7 +22,10 @@ app.config["UPLOAD_FOLDER"]      = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
+
+# Local pe threading, Render pe gevent
+async_mode = "gevent" if os.environ.get("RENDER") else "threading"
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=async_mode)
 
 os.makedirs("uploads", exist_ok=True)
 
