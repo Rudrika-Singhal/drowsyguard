@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DrowsyGuard — AI Driver Monitoring</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+
+<!-- ========== NAVBAR ========== -->
+<nav class="navbar">
+    <div class="nav-logo">DROWSY<span>GUARD</span></div>
+    <div class="nav-links">
+        <button class="nav-btn active" onclick="showSection('live')">Live Camera</button>
+        <button class="nav-btn" onclick="showSection('image')">Image</button>
+        <button class="nav-btn" onclick="showSection('video')">Video</button>
+        <button class="nav-btn" onclick="showSection('history')">History</button>
+    </div>
+    <div class="nav-status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Offline</span>
+    </div>
+</nav>
+
+<!-- ========== HERO ========== -->
+<header class="hero">
+    <div class="hero-content">
+        <div class="hero-tag">AI-POWERED SAFETY SYSTEM</div>
+        <h1 class="hero-title">Real-Time Driver<br><span>Drowsiness Detection</span></h1>
+        <p class="hero-sub">5-signal fatigue analysis using MediaPipe Face Mesh — EAR, Blink Rate, Head Pose, Yawn & Facial Fatigue</p>
+    </div>
+    <div class="hero-stats" id="heroStats">
+        <div class="stat-box">
+            <div class="stat-num" id="statTotal">--</div>
+            <div class="stat-label">Total Sessions</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-num alert-num" id="statDrowsy">--</div>
+            <div class="stat-label">Drowsy Detected</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-num safe-num" id="statAlert">--</div>
+            <div class="stat-label">Alert & Safe</div>
+        </div>
+    </div>
+</header>
+
+<!-- ========== MAIN CONTENT ========== -->
+<main class="main">
+
+    <!-- ===== LIVE CAMERA SECTION ===== -->
+    <section id="section-live" class="section active">
+        <div class="section-header">
+            <h2>Live Camera Detection</h2>
+            <p>Real-time drowsiness monitoring using your webcam</p>
+        </div>
+
+        <div class="live-grid">
+            <!-- Camera Feed -->
+            <div class="camera-box">
+                <div class="camera-frame" id="cameraFrame">
+                    <video id="videoFeed" autoplay muted playsinline></video>
+                    <canvas id="overlayCanvas" style="display:none"></canvas>
+                    <img id="processedFeed" style="display:none" alt="Processed feed"/>
+                    <div class="camera-placeholder" id="cameraPlaceholder">
+                        <div class="cam-icon">📷</div>
+                        <p>Camera not started</p>
+                        <p class="cam-sub">Click "Start Camera" below</p>
+                    </div>
+                    <div class="calibration-overlay" id="calibrationOverlay" style="display:none">
+                        <div class="cal-content">
+                            <div class="cal-icon">👁️</div>
+                            <p>Calibrating...</p>
+                            <p class="cal-sub">Keep eyes open & look straight</p>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="calProgress"></div>
+                            </div>
+                            <span id="calPercent">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="camera-controls">
+                    <button class="btn-primary" id="startBtn" onclick="startCamera()">
+                        ▶ Start Camera
+                    </button>
+                    <button class="btn-danger" id="stopBtn" onclick="stopCamera()" style="display:none">
+                        ■ Stop
+                    </button>
+                </div>
+            </div>
+
+            <!-- Live Result Panel -->
+            <div class="result-panel" id="liveResultPanel">
+                <div class="result-status" id="liveStatus">
+                    <div class="status-icon" id="statusIcon">🟡</div>
+                    <div class="status-label" id="statusLabel">Waiting...</div>
+                </div>
+
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-val" id="liveEAR">--</div>
+                        <div class="metric-name">EAR Value</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-val" id="liveScore">--</div>
+                        <div class="metric-name">Fatigue Score</div>
+                    </div>
+                </div>
+
+                <div class="signals-list" id="signalsList">
+                    <div class="signal-item" id="sig-eye">
+                        <span class="sig-dot off"></span>
+                        <span>Eyes Closed</span>
+                    </div>
+                    <div class="signal-item" id="sig-yawn">
+                        <span class="sig-dot off"></span>
+                        <span>Yawning</span>
+                    </div>
+                    <div class="signal-item" id="sig-nod">
+                        <span class="sig-dot off"></span>
+                        <span>Head Nodding</span>
+                    </div>
+                    <div class="signal-item" id="sig-tilt">
+                        <span class="sig-dot off"></span>
+                        <span>Head Tilted</span>
+                    </div>
+                    <div class="signal-item" id="sig-away">
+                        <span class="sig-dot off"></span>
+                        <span>Looking Away</span>
+                    </div>
+                </div>
+
+                <div class="alert-box" id="alertBox" style="display:none">
+                    ⚠️ DROWSINESS DETECTED! Please take a break.
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== IMAGE SECTION ===== -->
+    <section id="section-image" class="section">
+        <div class="section-header">
+            <h2>Image Analysis</h2>
+            <p>Upload a photo to detect drowsiness</p>
+        </div>
+
+        <div class="upload-grid">
+            <div class="upload-box" id="imageDropZone"
+                 ondrop="handleImageDrop(event)"
+                 ondragover="event.preventDefault()"
+                 ondragenter="this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')">
+                <input type="file" id="imageInput" accept="image/*" style="display:none"
+                       onchange="handleImageSelect(event)">
+                <div class="upload-icon">🖼️</div>
+                <p>Drag & drop image here</p>
+                <p class="upload-sub">or</p>
+                <button class="btn-outline" onclick="document.getElementById('imageInput').click()">
+                    Browse File
+                </button>
+                <p class="upload-formats">JPG, PNG, WEBP supported</p>
+            </div>
+
+            <div class="analysis-result" id="imageResult" style="display:none">
+                <img id="imagePreview" alt="Analyzed image"/>
+                <div class="result-badge" id="imageBadge"></div>
+                <div class="result-details" id="imageDetails"></div>
+            </div>
+        </div>
+
+        <div class="loading" id="imageLoading" style="display:none">
+            <div class="spinner"></div>
+            <p>Analyzing image...</p>
+        </div>
+    </section>
+
+    <!-- ===== VIDEO SECTION ===== -->
+    <section id="section-video" class="section">
+        <div class="section-header">
+            <h2>Video Analysis</h2>
+            <p>Upload a video for drowsiness analysis</p>
+        </div>
+
+        <div class="upload-grid">
+            <div class="upload-box" id="videoDropZone"
+                 ondrop="handleVideoDrop(event)"
+                 ondragover="event.preventDefault()"
+                 ondragenter="this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')">
+                <input type="file" id="videoInput" accept="video/*" style="display:none"
+                       onchange="handleVideoSelect(event)">
+                <div class="upload-icon">🎥</div>
+                <p>Drag & drop video here</p>
+                <p class="upload-sub">or</p>
+                <button class="btn-outline" onclick="document.getElementById('videoInput').click()">
+                    Browse File
+                </button>
+                <p class="upload-formats">MP4, AVI, MOV supported (max 50MB)</p>
+            </div>
+
+            <div class="analysis-result" id="videoResult" style="display:none">
+                <img id="videoPreview" alt="Video analysis frame"/>
+                <div class="result-badge" id="videoBadge"></div>
+                <div class="result-details" id="videoDetails"></div>
+            </div>
+        </div>
+
+        <div class="loading" id="videoLoading" style="display:none">
+            <div class="spinner"></div>
+            <p>Analyzing video... This may take a moment.</p>
+        </div>
+    </section>
+
+    <!-- ===== HISTORY SECTION ===== -->
+    <section id="section-history" class="section">
+        <div class="section-header">
+            <h2>Detection History</h2>
+            <p>Past 20 sessions from MongoDB</p>
+            <button class="btn-outline" onclick="loadHistory()">🔄 Refresh</button>
+        </div>
+
+        <div class="history-table-wrap">
+            <table class="history-table" id="historyTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Result</th>
+                        <th>Score</th>
+                        <th>Signals</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr><td colspan="6" class="empty-row">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</main>
+
+<!-- ========== FOOTER ========== -->
+<footer class="footer">
+    <p>DrowsyGuard — Final Year AI/ML Project &nbsp;|&nbsp; Built with MediaPipe + Flask + MongoDB</p>
+</footer>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
