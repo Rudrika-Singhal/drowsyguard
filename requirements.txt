@@ -2,7 +2,7 @@ flask
 flask-socketio
 flask-cors
 opencv-python-headless==4.8.1.78
-mediapipe==0.10.9
+mediapipe==0.10.35
 pymongo
 python-dotenv
 numpy==1.26.4
