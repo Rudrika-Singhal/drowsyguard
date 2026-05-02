@@ -16,16 +16,15 @@ from database import save_session, get_all_sessions, get_stats
 load_dotenv()
 
 app = Flask(__name__)
-app.config["SECRET_KEY"]      = os.getenv("SECRET_KEY", "drowsiness123")
-app.config["UPLOAD_FOLDER"]   = "uploads"
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max
+app.config["SECRET_KEY"]         = os.getenv("SECRET_KEY", "drowsiness123")
+app.config["UPLOAD_FOLDER"]      = "uploads"
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
 os.makedirs("uploads", exist_ok=True)
 
-# Calibration store (per socket session)
 calibration_store = {}
 
 # ================================================================
@@ -38,7 +37,6 @@ def index():
 
 @app.route("/api/stats")
 def stats():
-    """Dashboard stats"""
     try:
         data = get_stats()
         return jsonify(data)
@@ -47,7 +45,6 @@ def stats():
 
 @app.route("/api/history")
 def history():
-    """Past sessions"""
     try:
         sessions = get_all_sessions()
         return jsonify(sessions)
@@ -55,7 +52,7 @@ def history():
         return jsonify({"error": str(e)}), 500
 
 # ================================================================
-# IMAGE UPLOAD ROUTE
+# IMAGE UPLOAD
 # ================================================================
 
 @app.route("/api/analyze/image", methods=["POST"])
@@ -67,20 +64,16 @@ def analyze_image():
     if file.filename == "":
         return jsonify({"error": "File select nahi ki"}), 400
 
-    # Save file
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
     file.save(filepath)
 
-    # Analyze
     result = analyze_image_file(filepath)
 
     if "error" in result:
         return jsonify(result), 400
 
-    # Annotated frame base64 mein
     annotated = frame_to_base64(result["frame"])
 
-    # MongoDB mein save
     try:
         save_session({
             "test_type"    : "image",
@@ -92,7 +85,6 @@ def analyze_image():
     except:
         pass
 
-    # Cleanup
     os.remove(filepath)
 
     return jsonify({
@@ -104,7 +96,7 @@ def analyze_image():
     })
 
 # ================================================================
-# VIDEO UPLOAD ROUTE
+# VIDEO UPLOAD
 # ================================================================
 
 @app.route("/api/analyze/video", methods=["POST"])
@@ -166,14 +158,9 @@ def on_disconnect():
 
 @socketio.on("frame")
 def handle_frame(data):
-    """
-    Browser se base64 frame aata hai →
-    Analyze karo → Result wapas bhejo
-    """
     try:
         sid = request.sid
 
-        # Base64 → OpenCV frame
         img_data = base64.b64decode(data["frame"].split(",")[1])
         np_arr   = np.frombuffer(img_data, np.uint8)
         frame    = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
@@ -182,8 +169,7 @@ def handle_frame(data):
             return
 
         frame = cv2.resize(frame, (640, 480))
-
-        cal = calibration_store.get(sid, {})
+        cal   = calibration_store.get(sid, {})
 
         # Calibration phase
         if cal.get("calibrated") is None:
@@ -193,7 +179,7 @@ def handle_frame(data):
             res = face_mesh.process(rgb)
 
             if res.multi_face_landmarks:
-                lm = res.multi_face_landmarks[0].landmark
+                lm        = res.multi_face_landmarks[0].landmark
                 left_eye  = [(int(lm[i].x*w), int(lm[i].y*h)) for i in LEFT_EYE]
                 right_eye = [(int(lm[i].x*w), int(lm[i].y*h)) for i in RIGHT_EYE]
                 ear = (eye_aspect_ratio(left_eye) + eye_aspect_ratio(right_eye)) / 2
@@ -209,10 +195,9 @@ def handle_frame(data):
                 emit("calibrating", {"progress": progress})
             return
 
-        # Detection phase — annotated frame skip karo for speed
+        # Detection phase
         result = analyze_frame(frame, cal["calibrated"])
 
-        # Sirf result data bhejo — no heavy base64 image
         emit("result", {
             "result"       : result["result"],
             "fatigue_score": result["fatigue_score"],
@@ -221,7 +206,6 @@ def handle_frame(data):
             "annotated"    : None,
         })
 
-        # Drowsy ho toh MongoDB mein save karo
         if result["result"] == "DROWSY":
             try:
                 save_session({
@@ -242,4 +226,5 @@ def handle_frame(data):
 # ================================================================
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    socketio.run(app, host="0.0.0.0", port=port, debug=False)
