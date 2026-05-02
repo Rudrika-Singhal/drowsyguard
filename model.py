@@ -1,13 +1,15 @@
 import cv2
-import mediapipe as mp
 import math
 import numpy as np
 import base64
 import time
 
 # ---------- MEDIAPIPE SETUP ----------
-mp_face = mp.solutions.face_mesh
-face_mesh = mp_face.FaceMesh(
+from mediapipe.python.solutions.face_mesh import FaceMesh
+from mediapipe.python.solutions.face_mesh_connections import FACEMESH_TESSELATION
+from mediapipe.python.solutions.drawing_utils import draw_landmarks, DrawingSpec
+
+face_mesh = FaceMesh(
     static_image_mode=False,
     max_num_faces=1,
     refine_landmarks=True,
@@ -70,10 +72,6 @@ def get_head_pose(landmarks, w, h):
     return pitch, yaw, roll
 
 def analyze_frame(frame, calibrated_ear=None):
-    """
-    Ek frame analyze karo aur result return karo.
-    Returns: dict with all signals + annotated frame
-    """
     h, w, _ = frame.shape
     rgb      = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results  = face_mesh.process(rgb)
@@ -95,7 +93,6 @@ def analyze_frame(frame, calibrated_ear=None):
 
     ear = (eye_aspect_ratio(left_eye) + eye_aspect_ratio(right_eye)) / 2
 
-    # Auto calibrate agar calibrated_ear nahi hai
     if calibrated_ear is None:
         calibrated_ear = ear / 0.65
 
@@ -112,7 +109,6 @@ def analyze_frame(frame, calibrated_ear=None):
 
     pitch, yaw, roll = get_head_pose(landmarks, w, h)
 
-    # Signals
     eye_closed   = ear < EAR_THRESHOLD
     yawning      = mouth_ratio > 0.30
     head_nodding = pitch > 10
@@ -134,16 +130,17 @@ def analyze_frame(frame, calibrated_ear=None):
     result = "DROWSY" if fatigue_score >= 3 else "ALERT"
 
     # Draw on frame
-    mp_draw = mp.solutions.drawing_utils
-    mp_draw.draw_landmarks(
-        frame,
-        results.multi_face_landmarks[0],
-        mp_face.FACEMESH_TESSELATION,
-        mp_draw.DrawingSpec(color=(0, 255, 0), thickness=1, circle_radius=1),
-        mp_draw.DrawingSpec(color=(0, 0, 255), thickness=1)
-    )
+    try:
+        draw_landmarks(
+            frame,
+            results.multi_face_landmarks[0],
+            FACEMESH_TESSELATION,
+            DrawingSpec(color=(0, 255, 0), thickness=1, circle_radius=1),
+            DrawingSpec(color=(0, 0, 255), thickness=1)
+        )
+    except:
+        pass
 
-    # Text overlays
     color = (0, 0, 255) if result == "DROWSY" else (0, 255, 0)
     cv2.putText(frame, f"EAR: {ear:.2f}",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
@@ -178,7 +175,6 @@ def analyze_frame(frame, calibrated_ear=None):
     }
 
 def analyze_image_file(image_path, calibrated_ear=None):
-    """Image file analyze karo"""
     frame = cv2.imread(image_path)
     if frame is None:
         return {"error": "Image load nahi hui"}
@@ -186,19 +182,15 @@ def analyze_image_file(image_path, calibrated_ear=None):
     return analyze_frame(frame, calibrated_ear)
 
 def analyze_video_file(video_path, calibrated_ear=None):
-    """
-    Video file analyze karo — har 10th frame pe detection
-    Returns: overall result + per-frame results
-    """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return {"error": "Video load nahi hui"}
 
-    frame_results  = []
-    frame_count    = 0
-    drowsy_frames  = 0
-    total_frames   = 0
-    sample_frame   = None
+    frame_results = []
+    frame_count   = 0
+    drowsy_frames = 0
+    total_frames  = 0
+    sample_frame  = None
 
     while True:
         ret, frame = cap.read()
@@ -206,11 +198,11 @@ def analyze_video_file(video_path, calibrated_ear=None):
             break
 
         frame_count += 1
-        if frame_count % 10 != 0:  # Har 10th frame analyze karo
+        if frame_count % 10 != 0:
             continue
 
-        frame   = cv2.resize(frame, (640, 480))
-        result  = analyze_frame(frame.copy(), calibrated_ear)
+        frame  = cv2.resize(frame, (640, 480))
+        result = analyze_frame(frame.copy(), calibrated_ear)
 
         if result["face_detected"]:
             total_frames += 1
@@ -229,9 +221,9 @@ def analyze_video_file(video_path, calibrated_ear=None):
     if total_frames == 0:
         return {"error": "Video mein face detect nahi hua"}
 
-    drowsy_percent  = (drowsy_frames / total_frames) * 100
-    overall_result  = "DROWSY" if drowsy_percent > 30 else "ALERT"
-    avg_fatigue     = sum(r["fatigue_score"] for r in frame_results) / len(frame_results)
+    drowsy_percent = (drowsy_frames / total_frames) * 100
+    overall_result = "DROWSY" if drowsy_percent > 30 else "ALERT"
+    avg_fatigue    = sum(r["fatigue_score"] for r in frame_results) / len(frame_results)
 
     return {
         "face_detected" : True,
@@ -246,7 +238,6 @@ def analyze_video_file(video_path, calibrated_ear=None):
     }
 
 def frame_to_base64(frame):
-    """OpenCV frame ko base64 string mein convert karo web ke liye"""
     if frame is None:
         return None
     _, buffer = cv2.imencode('.jpg', frame)
